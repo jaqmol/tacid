@@ -1,0 +1,28 @@
+{
+  "name": "teth-storage",
+  "version": "0.0.1",
+  "description": "Teth key-value-store based on LMDB.",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaqmol/teth-storage.git"
+  },
+  "keywords": [
+    "teth",
+    "javascript",
+    "functional",
+    "reactive",
+    "functional-reactive",
+    "key-value-store",
+    "key-value"
+  ],
+  "author": "Ronny Reichmann",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jaqmol/teth-storage/issues"
+  },
+  "homepage": "https://github.com/jaqmol/teth-storage#readme"
+}

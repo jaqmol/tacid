@@ -1,10 +1,10 @@
 {
   "name": "teth-storage",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Teth key-value-store based on LMDB.",
   "main": "index.js",
   "scripts": {
-    "test": "test"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -24,5 +24,13 @@
   "bugs": {
     "url": "https://github.com/jaqmol/teth-storage/issues"
   },
-  "homepage": "https://github.com/jaqmol/teth-storage#readme"
+  "homepage": "https://github.com/jaqmol/teth-storage#readme",
+  "dependencies": {
+    "mkdirp": "^0.5.1",
+    "node-lmdb": "^0.4.13",
+    "teth": "^1.0.27"
+  },
+  "devDependencies": {
+    "jest": "^21.2.1"
+  }
 }

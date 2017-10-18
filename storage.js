@@ -2,6 +2,7 @@
 /* STORAGE is teth's KeyValueStore, based on LMDB */
 /* dependencies: node-lmdb, mkdirp */
 
+const path = require('path')
 const pipe = require('teth/pipe')
 const { define } = require('teth/T')
 const { Env, Cursor } = require('node-lmdb')
@@ -20,9 +21,9 @@ function environment (config) {
     mkdirp(config.path)
     env = new Env()
     env.open({
-        path: config.path,
-        mapSize: config.maxSize,
-        maxDbs: config.maxDbs
+      path: config.path,
+      mapSize: config.maxSize,
+      maxDbs: config.maxDbs
     })
     environmentForPath[config.path] = env
   }
@@ -62,7 +63,7 @@ function composeTransactionHandler () {
 function dataBufferFromValueAndAttachment (value, attachment) {
   const valueJson = JSON.stringify(value)
   const valueJsonBuf = Buffer.from(valueJson)
-  const valueLengthBuf = new Buffer(7)
+  const valueLengthBuf = Buffer.alloc(7)
   valueLengthBuf.writeUInt32LE(valueJsonBuf.length, 0)
   return Buffer.concat(
     attachment

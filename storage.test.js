@@ -1,10 +1,9 @@
 /* Copyright 2017 Ronny Reichmann */
+/* globals test expect */
 
-const mockUserData = require('./mock-user-data.json')
-const fs = require('fs')
-const auid = require('teth/auid')
 const { send } = require('teth/T')
 const { environment } = require('./storage')
+const mockUserData = require('./storage-test-data.json')
 
 const dataBufferFromValueAndAttachment = send.sync('type: teth-storage, retrieve: data-buffer-from-value-and-attachment-fn')
 const valueAndAttachmentFromDataBuffer = send.sync('type: teth-storage, retrieve: value-and-attachment-from-data-buffer-fn')

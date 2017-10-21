@@ -4,7 +4,7 @@
   "description": "Teth key-value-store based on LMDB.",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest --runInBand"
   },
   "repository": {
     "type": "git",
@@ -28,7 +28,8 @@
   "dependencies": {
     "mkdirp": "^0.5.1",
     "node-lmdb": "^0.4.13",
-    "teth": "^1.0.27"
+    "rimraf": "^2.6.2",
+    "teth": "^1.0.29"
   },
   "devDependencies": {
     "jest": "^21.2.1"

@@ -1,16 +1,26 @@
 /* Copyright 2017 Ronny Reichmann */
-/* globals test expect afterAll */
+/* globals test expect beforeAll afterAll */
 
 const { send } = require('teth/T')
 const pipe = require('teth/pipe')
+const rimraf = require('rimraf')
 const { environment } = require('./storage')
 const testData = require('./storage-test-data.json')
 
 const dataBufferFromValueAndAttachment = send.sync('type: teth-storage, retrieve: data-buffer-from-value-and-attachment-fn')
 const valueAndAttachmentFromDataBuffer = send.sync('type: teth-storage, retrieve: value-and-attachment-from-data-buffer-fn')
 
-const env = environment({maxDbs: 1, path: './storage-test-environment'})
-const store = env.storage('test-storage')
+const envPath = './storage-test-environment'
+let env
+let store
+
+beforeAll(done => {
+  rimraf(envPath, () => {
+    env = environment({maxDbs: 1, path: envPath})
+    store = env.storage('test-storage')
+    done()
+  })
+})
 
 test('test value and attachment', () => {
   const attachment = { hello: 'World!' }
@@ -83,23 +93,49 @@ test('count', done => {
   })
 })
 
-test('iterating keys', done => {
-  store.keys()
-    .forEach(key => {
-      console.log(key)
-    })
-    .then(count => {
-      console.log('count', count)
+function validateTestDataSet (item) {
+  validateTestDataSet.keyNames.forEach(k => {
+    expect(item[k]).toBeDefined()
+  })
+}
+validateTestDataSet.keyNames = ['id', 'email', 'gender', 'language', 'country', 'city', 'state', 'zip', 'street', 'streetNumber', 'phone', 'newsletter', 'firstName', 'lastName']
+
+test('iterate and get', done => {
+  store.iterate(0, 1000)
+    .map(i => i.get())
+    .reduce((acc, v) => {
+      acc.push(v)
+      return acc
+    }, [])
+    .then(acc => {
+      acc.forEach(validateTestDataSet)
       done()
     })
     .catch(err => {
+      console.error(err)
       expect(err).toBe(null)
+      done()
     })
 })
 
-// TODO: KEYS TESTS
+test('keys and get all', done => {
+  store.keys(0, 100)
+    .then(keys => {
+      return pipe.all(keys.map(k => store.get(k)))
+    })
+    .then(values => {
+      values.forEach(validateTestDataSet)
+      done()
+    })
+    .catch(err => {
+      console.error(err)
+      expect(err).toBe(null)
+      done()
+    })
+})
 
-afterAll(() => {
+afterAll(done => {
   store.close()
   env.close()
+  rimraf(envPath, done)
 })

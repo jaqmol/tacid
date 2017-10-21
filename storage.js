@@ -91,66 +91,112 @@ function composeStorage (env, name) {
     name: name,
     create: true
   })
-  const txnHandler = composeTransactionHandler(env)
+  const txnReadHandler = composeTransactionHandler(env)
+  const txnWriteHandler = composeTransactionHandler(env)
   function put (key, value, attachment) {
-    const txn = txnHandler.begin()
+    if (!key) return pipe.reject(new Error('<key> argument required'))
+    if (!value) return pipe.reject(new Error('<value> argument required'))
+    const txn = txnWriteHandler.begin()
     return pipe(resolve => {
       const dataBuffer = dataBufferFromValueAndAttachment(value, attachment)
       txn.putBinary(dbi, key, dataBuffer)
       resolve(key)
-      txnHandler.commit()
+      txnWriteHandler.commit()
     })
   }
   function get (key) {
-    const txn = txnHandler.begin()
+    if (!key) return pipe.reject(new Error('<key> argument required'))
+    const txn = txnReadHandler.begin()
     return pipe(resolve => {
       const dataBuffer = txn.getBinary(dbi, key)
       const result = valueAndAttachmentFromDataBuffer(dataBuffer)
       resolve(result)
-      txnHandler.commit()
+      txnReadHandler.commit()
     })
   }
   function del (key) {
-    const txn = txnHandler.begin()
+    if (!key) return pipe.reject(new Error('<key> argument required'))
+    const txn = txnWriteHandler.begin()
     return pipe(resolve => {
       const dataBuffer = txn.getBinary(dbi, key)
       const result = valueAndAttachmentFromDataBuffer(dataBuffer)
       txn.del(dbi, key)
       resolve(result)
-      txnHandler.commit()
+      txnWriteHandler.commit()
     })
   }
   function count () {
-    const txn = txnHandler.begin()
+    const txn = txnReadHandler.begin()
     return pipe(resolve => {
       const stat = dbi.stat(txn)
       resolve(stat.entryCount)
-      txnHandler.commit()
+      txnReadHandler.commit()
     })
   }
-  function keys () {
-    const txn = txnHandler.begin()
-    return pipe(resolve => {
-      const cursor = new Cursor(txn, dbi)
-      let key = cursor.goToFirst()
-      let counter = 0
-      if (!key) {
-        resolve(counter)
-        txnHandler.commit()
-      } else {
-        return next => {
-          next(key)
-          counter += 1
-          key = cursor.goToNext()
-          if (!key) {
-            resolve(counter)
-            txnHandler.commit()
-          }
+  function iterate (startIndex, endIndex) {
+    const txn = txnReadHandler.begin()
+    const entryCount = dbi.stat(txn).entryCount
+    startIndex = arguments.length > 0 ? startIndex : 0
+    endIndex = arguments.length > 1 ? endIndex : entryCount
+    if (endIndex > entryCount) {
+      txnReadHandler.commit()
+      return pipe.reject(new Error(`Out of bounds: startIndex = ${startIndex}, endIndex = ${endIndex}, entryCount = ${entryCount}`))
+    }
+    return pipe((resolve, reject) => {
+      const cur = new Cursor(txn, dbi)
+      let key = cur.goToFirst()
+      let idx = 0
+      while (idx < startIndex) { // fast forward
+        key = cur.goToNext()
+        idx += 1
+      }
+      return next => {
+        if (idx < endIndex) {
+          next({
+            key,
+            get: () => pipe(resolveGet => {
+              cur.getCurrentBinary((key, dataBuffer) => {
+                resolveGet(valueAndAttachmentFromDataBuffer(dataBuffer))
+              })
+            })
+          })
+          key = cur.goToNext()
+          idx += 1
+        } else {
+          resolve(idx)
+          txnReadHandler.commit()
         }
       }
     })
   }
-  const composit = { put, get, del, count, keys, close }
+  function keys (startIndex, endIndex) {
+    const txn = txnReadHandler.begin()
+    const entryCount = dbi.stat(txn).entryCount
+    startIndex = arguments.length > 0 ? startIndex : 0
+    endIndex = arguments.length > 1 ? endIndex : entryCount
+    if (endIndex > entryCount) {
+      txnReadHandler.commit()
+      return pipe.reject(new Error(`Out of bounds: startIndex = ${startIndex}, endIndex = ${endIndex}, entryCount = ${entryCount}`))
+    }
+    return pipe((resolve, reject) => {
+      const cur = new Cursor(txn, dbi)
+      let key = cur.goToFirst()
+      let idx = 0
+      while (idx < startIndex) {
+        key = cur.goToNext()
+        idx += 1
+      }
+      const acc = []
+      while (idx < endIndex) {
+        acc.push(key)
+        key = cur.goToNext()
+        idx += 1
+      }
+      resolve(acc)
+      setTimeout(txnReadHandler.commit, 0)
+    })
+  }
+  const composit = { put, get, del, count, iterate, keys, close }
   function close () {
     dbi.close()
     dbi = null
@@ -159,6 +205,7 @@ function composeStorage (env, name) {
     composit.get = undefined
     composit.del = undefined
     composit.count = undefined
+    composit.iterate = undefined
     composit.keys = undefined
     composit.close = undefined
   }

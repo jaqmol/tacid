@@ -100,15 +100,20 @@ function validateTestDataSet (item) {
 }
 validateTestDataSet.keyNames = ['id', 'email', 'gender', 'language', 'country', 'city', 'state', 'zip', 'street', 'streetNumber', 'phone', 'newsletter', 'firstName', 'lastName']
 
-test('iterate and get', done => {
-  store.iterate(0, 1000)
-    .map(i => i.get())
-    .reduce((acc, v) => {
-      acc.push(v)
-      return acc
-    }, [])
-    .then(acc => {
-      acc.forEach(validateTestDataSet)
+test('filter keys to slice', done => {
+  store
+    .filter(false, (key, ctx) => {
+      ctx.stop = ctx.index >= 2000
+      if (ctx.stop) return false
+      return ctx.index >= 1000
+    })
+    .then(aThousandKeys => {
+      expect(aThousandKeys.length).toBe(1000)
+      const keysAreAllStr = aThousandKeys.reduce((acc, k) => {
+        if (!acc) return acc
+        return typeof k === 'string'
+      }, true)
+      expect(keysAreAllStr).toBe(true)
       done()
     })
     .catch(err => {
@@ -118,13 +123,43 @@ test('iterate and get', done => {
     })
 })
 
-test('keys and get all', done => {
-  store.keys(0, 100)
-    .then(keys => {
-      return pipe.all(keys.map(k => store.get(k)))
+test('filter values to slice', done => {
+  store
+    .filter(true, (key, value, ctx) => {
+      ctx.stop = ctx.index >= 3000
+      if (ctx.stop) return false
+      return ctx.index >= 2000
     })
-    .then(values => {
-      values.forEach(validateTestDataSet)
+    .then(aThousandKeysAndValues => {
+      expect(aThousandKeysAndValues.length).toBe(1000)
+      aThousandKeysAndValues.forEach(kv => {
+        validateTestDataSet(kv.value)
+      })
+      done()
+    })
+    .catch(err => {
+      console.error(err)
+      expect(err).toBe(null)
+      done()
+    })
+})
+
+test('filter values by prop', done => {
+  store
+    .filter(true, (k, v, ctx) => v.language === 'Spanish')
+    .then(keyValuePairs => {
+      const fromDb = keyValuePairs
+        .reduce((acc, kvp) => {
+          acc[kvp.key] = kvp.value
+          return acc
+        }, {})
+      const originals = testData
+        .filter(item => item.language === 'Spanish')
+        .reduce((acc, item) => {
+          acc[item.id] = item
+          return acc
+        }, {})
+      expect(fromDb).toEqual(originals)
       done()
     })
     .catch(err => {

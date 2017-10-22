@@ -39,26 +39,6 @@ function environment (config) {
   return composit
 }
 
-function composeTransactionHandler (env) {
-  let txn = null
-  let counter = 0
-  function begin () {
-    if (counter === 0) {
-      txn = env.beginTxn()
-    }
-    counter += 1
-    return txn
-  }
-  function commit () {
-    counter -= 1
-    if (counter === 0) {
-      txn.commit()
-      txn = null
-    }
-  }
-  return Object.freeze({ begin, commit })
-}
-
 function dataBufferFromValueAndAttachment (value, attachment) {
   const valueJson = JSON.stringify(value)
   const valueJsonLen = Buffer.byteLength(valueJson)
@@ -83,6 +63,26 @@ function valueAndAttachmentFromDataBuffer (dataBuffer) {
 
 define('type: teth-storage, retrieve: data-buffer-from-value-and-attachment-fn', () => dataBufferFromValueAndAttachment)
 define('type: teth-storage, retrieve: value-and-attachment-from-data-buffer-fn', () => valueAndAttachmentFromDataBuffer)
+
+function composeTransactionHandler (env) {
+  let txn = null
+  let counter = 0
+  function begin () {
+    if (counter === 0) {
+      txn = env.beginTxn()
+    }
+    counter += 1
+    return txn
+  }
+  function commit () {
+    counter -= 1
+    if (counter === 0) {
+      txn.commit()
+      txn = null
+    }
+  }
+  return Object.freeze({ begin, commit })
+}
 
 function composeStorage (env, name) {
   if (!env) throw new Error('Argument <env> missing')
@@ -133,70 +133,71 @@ function composeStorage (env, name) {
       txnReadHandler.commit()
     })
   }
-  function iterate (startIndex, endIndex) {
+  function filterKeys (callback) {
     const txn = txnReadHandler.begin()
-    const entryCount = dbi.stat(txn).entryCount
-    startIndex = arguments.length > 0 ? startIndex : 0
-    endIndex = arguments.length > 1 ? endIndex : entryCount
-    if (endIndex > entryCount) {
-      txnReadHandler.commit()
-      return pipe.reject(new Error(`Out of bounds: startIndex = ${startIndex}, endIndex = ${endIndex}, entryCount = ${entryCount}`))
-    }
+    const endIndex = dbi.stat(txn).entryCount
     return pipe((resolve, reject) => {
       const cur = new Cursor(txn, dbi)
-      let key = cur.goToFirst()
-      let idx = 0
-      while (idx < startIndex) { // fast forward
-        key = cur.goToNext()
-        idx += 1
-      }
-      return next => {
-        if (idx < endIndex) {
-          next({
-            key,
-            get: () => pipe(resolveGet => {
-              cur.getCurrentBinary((key, dataBuffer) => {
-                resolveGet(valueAndAttachmentFromDataBuffer(dataBuffer))
-              })
-            })
-          })
-          key = cur.goToNext()
-          idx += 1
-        } else {
-          resolve(idx)
-          txnReadHandler.commit()
-        }
-      }
-    })
-  }
-  function keys (startIndex, endIndex) {
-    const txn = txnReadHandler.begin()
-    const entryCount = dbi.stat(txn).entryCount
-    startIndex = arguments.length > 0 ? startIndex : 0
-    endIndex = arguments.length > 1 ? endIndex : entryCount
-    if (endIndex > entryCount) {
-      txnReadHandler.commit()
-      return pipe.reject(new Error(`Out of bounds: startIndex = ${startIndex}, endIndex = ${endIndex}, entryCount = ${entryCount}`))
-    }
-    return pipe((resolve, reject) => {
-      const cur = new Cursor(txn, dbi)
-      let key = cur.goToFirst()
-      let idx = 0
-      while (idx < startIndex) {
-        key = cur.goToNext()
-        idx += 1
-      }
       const acc = []
-      while (idx < endIndex) {
-        acc.push(key)
+      let key = cur.goToFirst()
+      for (var i = 0; i < endIndex; i++) {
+        const ctx = { index: i, stop: false }
+        if (callback(key, ctx)) acc.push(key)
         key = cur.goToNext()
-        idx += 1
       }
       resolve(acc)
-      setTimeout(txnReadHandler.commit, 0)
+      cur.close()
+      txnReadHandler.commit()
     })
   }
-  const composit = { put, get, del, count, iterate, keys, close }
+  function filterValues (callback) {
+    const txn = txnReadHandler.begin()
+    const endIndex = dbi.stat(txn).entryCount
+    function nextDeferredOperation (cur, index, stopper) {
+      return pipe(resolveGet => {
+        cur.getCurrentBinary((key, dataBuffer) => {
+          const value = valueAndAttachmentFromDataBuffer(dataBuffer)
+          const ctx = { index, stop: false }
+          const keep = callback(key, value, ctx)
+          stopper.stop = ctx.stop
+          if (keep) resolveGet({ key, value })
+          else resolveGet(false)
+        })
+      }).then(result => result)
+    }
+    return pipe((resolve, reject) => {
+      const cur = new Cursor(txn, dbi)
+      const acc = []
+      cur.goToFirst()
+      const stopper = { stop: false }
+      for (var i = 0; i < endIndex; i++) {
+        acc.push(nextDeferredOperation(cur, i, stopper))
+        cur.goToNext()
+        if (stopper.stop) break
+      }
+      function closeAndCommit () {
+        cur.close()
+        txnReadHandler.commit()
+      }
+      pipe.all(acc)
+        .then(results => {
+          resolve(results.filter(r => r))
+          closeAndCommit()
+        })
+        .catch(err => {
+          reject(err)
+          closeAndCommit()
+        })
+    })
+  }
+  function filter (includeValue, callback) {
+    if (includeValue) {
+      return filterValues(callback)
+    } else {
+      return filterKeys(callback)
+    }
+  }
+  const composit = { put, get, del, count, filter, close }
   function close () {
     dbi.close()
     dbi = null
@@ -205,8 +206,7 @@ function composeStorage (env, name) {
     composit.get = undefined
     composit.del = undefined
     composit.count = undefined
-    composit.iterate = undefined
-    composit.keys = undefined
+    composit.filter = undefined
     composit.close = undefined
   }
   return composit

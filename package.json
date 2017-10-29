@@ -1,8 +1,8 @@
 {
   "name": "teth-storage",
-  "version": "0.9.9",
+  "version": "1.0.0",
   "description": "Teth key-value-store based on LMDB.",
-  "main": "index.js",
+  "main": "storage.js",
   "scripts": {
     "test": "jest --runInBand"
   },

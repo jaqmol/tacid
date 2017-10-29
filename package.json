@@ -1,6 +1,6 @@
 {
   "name": "teth-storage",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Teth key-value-store based on LMDB.",
   "main": "storage.js",
   "scripts": {
@@ -29,7 +29,7 @@
     "mkdirp": "^0.5.1",
     "node-lmdb": "^0.4.13",
     "rimraf": "^2.6.2",
-    "teth": "^1.0.29"
+    "teth": "^1.0.31"
   },
   "devDependencies": {
     "jest": "^21.2.1"

@@ -97,39 +97,55 @@ function composeStorage (env, name) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
     if (!value) return pipe.reject(new Error('<value> argument required'))
     const txn = txnWriteHandler.begin()
-    return pipe(resolve => {
+    return pipe((resolve, reject) => {
       const dataBuffer = dataBufferFromValueAndAttachment(value, attachment)
-      txn.putBinary(dbi, key, dataBuffer)
-      resolve(key)
+      try {
+        txn.putBinary(dbi, key, dataBuffer)
+        resolve(key)
+      } catch (err) {
+        reject(err)
+      }
       txnWriteHandler.commit()
     })
   }
   function get (key) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
     const txn = txnReadHandler.begin()
-    return pipe(resolve => {
-      const dataBuffer = txn.getBinary(dbi, key)
-      const result = valueAndAttachmentFromDataBuffer(dataBuffer)
-      resolve(result)
+    return pipe((resolve, reject) => {
+      try {
+        const dataBuffer = txn.getBinary(dbi, key)
+        const result = valueAndAttachmentFromDataBuffer(dataBuffer)
+        resolve(result)
+      } catch (err) {
+        reject(err)
+      }
       txnReadHandler.commit()
     })
   }
   function del (key) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
     const txn = txnWriteHandler.begin()
-    return pipe(resolve => {
-      const dataBuffer = txn.getBinary(dbi, key)
-      const result = valueAndAttachmentFromDataBuffer(dataBuffer)
-      txn.del(dbi, key)
-      resolve(result)
+    return pipe((resolve, reject) => {
+      try {
+        const dataBuffer = txn.getBinary(dbi, key)
+        const result = valueAndAttachmentFromDataBuffer(dataBuffer)
+        txn.del(dbi, key)
+        resolve(result)
+      } catch (err) {
+        reject(err)
+      }
       txnWriteHandler.commit()
     })
   }
   function count () {
     const txn = txnReadHandler.begin()
-    return pipe(resolve => {
-      const stat = dbi.stat(txn)
-      resolve(stat.entryCount)
+    return pipe((resolve, reject) => {
+      try {
+        const stat = dbi.stat(txn)
+        resolve(stat.entryCount)
+      } catch (err) {
+        reject(err)
+      }
       txnReadHandler.commit()
     })
   }
@@ -137,16 +153,20 @@ function composeStorage (env, name) {
     const txn = txnReadHandler.begin()
     const endIndex = dbi.stat(txn).entryCount
     return pipe((resolve, reject) => {
-      const cur = new Cursor(txn, dbi)
-      const acc = []
-      let key = cur.goToFirst()
-      for (var i = 0; i < endIndex; i++) {
-        const ctx = { index: i, stop: false }
-        if (callback(key, ctx)) acc.push(key)
-        key = cur.goToNext()
+      try {
+        const cur = new Cursor(txn, dbi)
+        const acc = []
+        let key = cur.goToFirst()
+        for (var i = 0; i < endIndex; i++) {
+          const ctx = { index: i, stop: false }
+          if (callback(key, ctx)) acc.push(key)
+          key = cur.goToNext()
+        }
+        resolve(acc)
+        cur.close()
+      } catch (err) {
+        reject(err)
       }
-      resolve(acc)
-      cur.close()
       txnReadHandler.commit()
     })
   }
@@ -154,40 +174,48 @@ function composeStorage (env, name) {
     const txn = txnReadHandler.begin()
     const endIndex = dbi.stat(txn).entryCount
     function nextDeferredOperation (cur, index, stopper) {
-      return pipe(resolveGet => {
-        cur.getCurrentBinary((key, dataBuffer) => {
-          const value = valueAndAttachmentFromDataBuffer(dataBuffer)
-          const ctx = { index, stop: false }
-          const keep = callback(key, value, ctx)
-          stopper.stop = ctx.stop
-          if (keep) resolveGet({ key, value })
-          else resolveGet(false)
-        })
+      return pipe((resolveGet, rejectGet) => {
+        try {
+          cur.getCurrentBinary((key, dataBuffer) => {
+            const value = valueAndAttachmentFromDataBuffer(dataBuffer)
+            const ctx = { index, stop: false }
+            const keep = callback(key, value, ctx)
+            stopper.stop = ctx.stop
+            if (keep) resolveGet({ key, value })
+            else resolveGet(false)
+          })
+        } catch (err) {
+          rejectGet(err)
+        }
       }).then(result => result)
     }
     return pipe((resolve, reject) => {
-      const cur = new Cursor(txn, dbi)
-      const acc = []
-      cur.goToFirst()
-      const stopper = { stop: false }
-      for (var i = 0; i < endIndex; i++) {
-        acc.push(nextDeferredOperation(cur, i, stopper))
-        cur.goToNext()
-        if (stopper.stop) break
+      try {
+        const cur = new Cursor(txn, dbi)
+        const acc = []
+        cur.goToFirst()
+        const stopper = { stop: false }
+        for (var i = 0; i < endIndex; i++) {
+          acc.push(nextDeferredOperation(cur, i, stopper))
+          cur.goToNext()
+          if (stopper.stop) break
+        }
+        const closeAndCommit = () => {
+          cur.close()
+          txnReadHandler.commit()
+        }
+        pipe.all(acc)
+          .then(results => {
+            resolve(results.filter(r => r))
+            closeAndCommit()
+          })
+          .catch(err => {
+            reject(err)
+            closeAndCommit()
+          })
+      } catch (err) {
+        reject(err)
       }
-      function closeAndCommit () {
-        cur.close()
-        txnReadHandler.commit()
-      }
-      pipe.all(acc)
-        .then(results => {
-          resolve(results.filter(r => r))
-          closeAndCommit()
-        })
-        .catch(err => {
-          reject(err)
-          closeAndCommit()
-        })
     })
   }
   function filter (includeValue, callback) {

@@ -225,7 +225,10 @@ function composeStorage (env, name) {
       return filterKeys(callback)
     }
   }
-  const composit = { put, get, del, count, filter, close }
+  const composit = { put, get, del, count, filter, state, close }
+  function state (message, next) {
+    return next(message, composit)
+  }
   function close () {
     dbi.close()
     dbi = null
@@ -236,6 +239,7 @@ function composeStorage (env, name) {
     composit.count = undefined
     composit.filter = undefined
     composit.close = undefined
+    composit.state = undefined
   }
   return composit
 }

@@ -8,6 +8,26 @@ const { define } = require('teth/T')
 const { Env, Cursor } = require('node-lmdb')
 const mkdirp = require('mkdirp').sync
 
+function composeTransactionHandler (env) {
+  let txn = null
+  let counter = 0
+  function begin () {
+    if (counter === 0) {
+      txn = env.beginTxn()
+    }
+    counter += 1
+    return txn
+  }
+  function commit () {
+    counter -= 1
+    if (counter === 0) {
+      txn.commit()
+      txn = null
+    }
+  }
+  return Object.freeze({ begin, commit })
+}
+
 const environmentForPath = {}
 
 function environment (config) {
@@ -26,6 +46,10 @@ function environment (config) {
     })
     environmentForPath[config.path] = env
   }
+  const transaction = {
+    read: composeTransactionHandler(env),
+    write: composeTransactionHandler(env)
+  }
   const composit = {
     close: () => {
       env.close()
@@ -34,7 +58,7 @@ function environment (config) {
       composit.close = undefined
       composit.storage = undefined
     },
-    storage: name => composeStorage(env, name)
+    storage: name => composeStorage(env, name, transaction)
   }
   return composit
 }
@@ -64,39 +88,18 @@ function valueAndAttachmentFromDataBuffer (dataBuffer) {
 define('type: teth-storage, retrieve: data-buffer-from-value-and-attachment-fn', () => dataBufferFromValueAndAttachment)
 define('type: teth-storage, retrieve: value-and-attachment-from-data-buffer-fn', () => valueAndAttachmentFromDataBuffer)
 
-function composeTransactionHandler (env) {
-  let txn = null
-  let counter = 0
-  function begin () {
-    if (counter === 0) {
-      txn = env.beginTxn()
-    }
-    counter += 1
-    return txn
-  }
-  function commit () {
-    counter -= 1
-    if (counter === 0) {
-      txn.commit()
-      txn = null
-    }
-  }
-  return Object.freeze({ begin, commit })
-}
-
-function composeStorage (env, name) {
+function composeStorage (env, name, transaction) {
   if (!env) throw new Error('Argument <env> missing')
   if (!name) throw new Error('Argument <name> missing')
+  if (!transaction) throw new Error('Argument <transaction> missing')
   let dbi = env.openDbi({
     name: name,
     create: true
   })
-  const txnReadHandler = composeTransactionHandler(env)
-  const txnWriteHandler = composeTransactionHandler(env)
   function put (key, value, attachment) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
     if (!value) return pipe.reject(new Error('<value> argument required'))
-    const txn = txnWriteHandler.begin()
+    const txn = transaction.write.begin()
     return pipe((resolve, reject) => {
       const dataBuffer = dataBufferFromValueAndAttachment(value, attachment)
       try {
@@ -105,12 +108,12 @@ function composeStorage (env, name) {
       } catch (err) {
         reject(err)
       }
-      txnWriteHandler.commit()
+      transaction.write.commit()
     })
   }
   function get (key) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
-    const txn = txnReadHandler.begin()
+    const txn = transaction.read.begin()
     return pipe((resolve, reject) => {
       try {
         const dataBuffer = txn.getBinary(dbi, key)
@@ -119,12 +122,12 @@ function composeStorage (env, name) {
       } catch (err) {
         reject(err)
       }
-      txnReadHandler.commit()
+      transaction.read.commit()
     })
   }
   function del (key) {
     if (!key) return pipe.reject(new Error('<key> argument required'))
-    const txn = txnWriteHandler.begin()
+    const txn = transaction.write.begin()
     return pipe((resolve, reject) => {
       try {
         const dataBuffer = txn.getBinary(dbi, key)
@@ -134,11 +137,11 @@ function composeStorage (env, name) {
       } catch (err) {
         reject(err)
       }
-      txnWriteHandler.commit()
+      transaction.write.commit()
     })
   }
   function count () {
-    const txn = txnReadHandler.begin()
+    const txn = transaction.read.begin()
     return pipe((resolve, reject) => {
       try {
         const stat = dbi.stat(txn)
@@ -146,11 +149,11 @@ function composeStorage (env, name) {
       } catch (err) {
         reject(err)
       }
-      txnReadHandler.commit()
+      transaction.read.commit()
     })
   }
   function filterKeys (callback) {
-    const txn = txnReadHandler.begin()
+    const txn = transaction.read.begin()
     const endIndex = dbi.stat(txn).entryCount
     return pipe((resolve, reject) => {
       try {
@@ -167,11 +170,11 @@ function composeStorage (env, name) {
       } catch (err) {
         reject(err)
       }
-      txnReadHandler.commit()
+      transaction.read.commit()
     })
   }
   function filterValues (callback) {
-    const txn = txnReadHandler.begin()
+    const txn = transaction.read.begin()
     const endIndex = dbi.stat(txn).entryCount
     function nextDeferredOperation (cur, index, stopper) {
       return pipe((resolveGet, rejectGet) => {
@@ -202,7 +205,7 @@ function composeStorage (env, name) {
         }
         const closeAndCommit = () => {
           cur.close()
-          txnReadHandler.commit()
+          transaction.read.commit()
         }
         pipe.all(acc)
           .then(results => {

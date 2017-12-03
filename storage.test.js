@@ -1,119 +1,150 @@
 /* Copyright 2017 Ronny Reichmann */
 /* globals test expect beforeAll afterAll */
 
-const { send } = require('teth/T')
-const pipe = require('teth/pipe')
+const pipe = require('teth-pipe')
+const { context } = require('teth/T')
 const rimraf = require('rimraf')
-const { environment } = require('./storage')
+const environment = require('./environment')
+const dataBuffer = require('./data-buffer')
 const testData = require('./storage-test-data.json')
-
-const dataBufferFromValueAndAttachment = send.sync('type: teth-storage, retrieve: data-buffer-from-value-and-attachment-fn')
-const valueAndAttachmentFromDataBuffer = send.sync('type: teth-storage, retrieve: value-and-attachment-from-data-buffer-fn')
 
 const envPath = './storage-test-environment'
 let env
-let store
 
 beforeAll(done => {
   rimraf(envPath, () => {
-    env = environment({maxDbs: 1, path: envPath})
-    store = env.storage('test-storage')
+    env = environment({maxDbs: 15, path: envPath})
     done()
   })
 })
 
-test('test value and attachment', () => {
+test('data buffer value and attachment', () => {
   const attachment = { hello: 'World!' }
   const attachmentJson = JSON.stringify(attachment)
   const attachmentBuffer = Buffer.from(attachmentJson)
-
   const value = { user: 'Roni' }
-  const dataBuffer = dataBufferFromValueAndAttachment(value, attachmentBuffer)
-  const result = valueAndAttachmentFromDataBuffer(dataBuffer)
-
+  const data = dataBuffer.fromValue(value, attachmentBuffer)
+  const result = dataBuffer.toValue(data)
   const resultValue = result.value
   const resultAttachmentJson = result.attachment.toString('utf8')
   const resultAttachment = JSON.parse(resultAttachmentJson)
-
   expect(resultValue).toEqual(value)
   expect(resultAttachment).toEqual(attachment)
 })
 
-test('test value without attachment', () => {
+test('data buffer value without attachment', () => {
   const value = { user: 'Roni' }
-  const dataBuffer = dataBufferFromValueAndAttachment(value)
-  const result = valueAndAttachmentFromDataBuffer(dataBuffer)
-
+  const data = dataBuffer.fromValue(value)
+  const result = dataBuffer.toValue(data)
   expect(result).toEqual(value)
 })
 
-function testBatchPut (store, allItems, done) {
-  const allItemIds = allItems.map(i => i.id)
-  pipe.all(allItems.map(i => store.put(i.id, i)))
-    .then(allResultKeys => {
-      allResultKeys.forEach(key => {
-        const idx = allItemIds.indexOf(key)
-        expect(idx).toBeGreaterThan(-1)
-      })
+test('put one in store and get', done => {
+  const item = testData[0]
+  env.with('test-store', str => str.put(item.id, item))
+    .then(resultKey => {
+      expect(resultKey).toEqual(item.id)
+      return env.with('test-store', str => str.get(resultKey))
+    })
+    .then(resultItem => {
+      expect(resultItem).toEqual(item)
       done()
     })
     .catch(err => {
+      console.error(err)
       expect(err).toBe(null)
-      done()
     })
-}
-function testBatchGet (store, allItems, done) {
-  pipe.all(allItems.map(i => store.get(i.id)))
-    .then(allRetrievedItems => {
-      expect(allRetrievedItems).toEqual(allItems)
-      done()
-    })
-    .catch(err => {
-      expect(err).toBe(null)
-      done()
-    })
-}
-
-function batchCall (label, batchFn) {
-  for (var i = 0; i < 5; i++) {
-    const start = i * 1000
-    test(`${label} ${i + 1}. 1000 test items`, done => {
-      batchFn(store, testData.slice(start, start + 1000), done)
-    })
-  }
-}
-
-batchCall('putting', testBatchPut)
-batchCall('getting', testBatchGet)
-
-test('count', done => {
-  store.count().then(count => {
-    expect(count).toBeGreaterThan(0)
-    done()
-  })
 })
 
-function validateTestDataSet (item) {
-  validateTestDataSet.keyNames.forEach(k => {
-    expect(item[k]).toBeDefined()
-  })
-}
-validateTestDataSet.keyNames = ['id', 'email', 'gender', 'language', 'country', 'city', 'state', 'zip', 'street', 'streetNumber', 'phone', 'newsletter', 'firstName', 'lastName']
+test('put many in store and get', done => {
+  const allItems = testData.slice(1, 500)
+  env.with('test-store', str => {
+      return pipe.all(allItems.map(i => str.put(i.id, i)))
+    })
+    .then(allKeys => {
+      return env.with('test-store', str => {
+        return pipe.all(allKeys.map(k => str.get(k)))
+      })
+    })
+    .then(resultItems => {
+      expect(resultItems).toEqual(allItems)
+      done()
+    })
+    .catch(err => {
+      expect(err).toBe(null)
+    })
+})
+
+test('put many in store and remove', done => {
+  const allItems = testData.slice(500, 1000)
+  env.with('test-store', str => {
+      return str.count().then(countBefore => {
+        return pipe.all(allItems.map(i => str.put(i.id, i)))
+          .then(allResultKeys => ({countBefore, allResultKeys}))
+      })
+    })
+    .then(result => {
+      expect(result.allResultKeys).toEqual(allItems.map(i => i.id))
+      return env.with('test-store', str => str.count()).then(countAfterPut => {
+        return Object.assign(result, {countAfterPut})
+      })
+    })
+    .then(result => {
+      expect(result.countBefore).toBe(result.countAfterPut - 500)
+      return env.with('test-store', str => {
+        return pipe.all(result.allResultKeys.map(k => str.remove(k)))
+      })
+    })
+    .then(allRemovedItems => {
+      expect(allRemovedItems).toEqual(allItems)
+      return env.with('test-store', str => str.count())
+    })
+    .then(countAfter => {
+      expect(countAfter).toBe(500)
+      done()
+    })
+    .catch(err => {
+      console.error(err)
+      expect(err).toBe(null)
+    })
+})
+
+test('put and get in parallel', done => {
+  let count = 0
+  const operate = (name, from, to) => {
+    const allItems = testData.slice(from, to)
+    env.with(name, str => pipe.all(allItems.map(i => str.put(i.id, i))))
+      .then(allPutKeys => {
+        expect(allPutKeys).toEqual(allItems.map(i => i.id))
+        return env.with(name, str => pipe.all(allPutKeys.map(k => str.get(k))))
+      })
+      .then(allGetItems => {
+        expect(allGetItems).toEqual(allItems)
+        count += 1
+        if (count === 2) done()
+      })
+      .catch(err => {
+        console.error(err)
+        expect(err).toBe(null)
+      })
+  }
+  operate('first-parallel', 1000, 1500)
+  setTimeout(() => { operate('second-parallel', 1500, 2000) }, 5)
+})
 
 test('filter keys to slice', done => {
-  store
-    .filter(false, (key, ctx) => {
-      ctx.stop = ctx.index >= 2000
-      if (ctx.stop) return false
-      return ctx.index >= 1000
+  setTimeout(() => {
+    env.with('test-store', store => {
+      // console.log('filter test store:', store.filter)
+      return store.filter((key, ctx) => {
+        ctx.stop = ctx.index >= 500
+        return ctx.index < 500
+      })
     })
-    .then(aThousandKeys => {
-      expect(aThousandKeys.length).toBe(1000)
-      const keysAreAllStr = aThousandKeys.reduce((acc, k) => {
-        if (!acc) return acc
-        return typeof k === 'string'
-      }, true)
-      expect(keysAreAllStr).toBe(true)
+    .then(allKeys => {
+      expect(allKeys.length).toBe(500)
+      const allStr = allKeys.reduce((acc, k) => !acc || (typeof k === 'string'), true)
+      expect(allStr).toBe(true)
       done()
     })
     .catch(err => {
@@ -121,56 +152,107 @@ test('filter keys to slice', done => {
       expect(err).toBe(null)
       done()
     })
+  }, 13)
 })
 
 test('filter values to slice', done => {
-  store
-    .filter(true, (key, value, ctx) => {
-      ctx.stop = ctx.index >= 3000
-      if (ctx.stop) return false
-      return ctx.index >= 2000
+  setTimeout(() => {
+    env.with('test-store', store => {
+      return store.filter({values: true}, (key, value, ctx) => {
+        ctx.stop = ctx.index >= 500
+        return ctx.index < 500
+      })
     })
-    .then(aThousandKeysAndValues => {
-      expect(aThousandKeysAndValues.length).toBe(1000)
-      aThousandKeysAndValues.forEach(kv => {
-        validateTestDataSet(kv.value)
+    .then(allKeysAndValues => {
+      expect(allKeysAndValues.length).toBe(500)
+      const allPropNames = Object.keys(testData[0])
+      allKeysAndValues.forEach(kv => {
+        expect(typeof kv.key === 'string').toBe(true)
+        expect(typeof kv.value === 'object').toBe(true)
+        allPropNames.forEach(propName => {
+          expect(kv.value[propName]).toBeDefined()
+        })
+      })
+      done()
+    })
+    .catch(err => {
+      expect(err).toBe(null)
+      done()
+    })
+  }, 13)
+})
+
+test('filter values by prop', done => {
+  setTimeout(() => {
+    env.with('test-store', store => {
+      return store.filter({values: true}, (k, v, ctx) => v.language === 'Spanish')
+    })
+    .then(allKeysAndValues => {
+      allKeysAndValues.forEach(kv => {
+        expect(kv.value.language).toEqual('Spanish')
+      })
+      done()
+    })
+    .catch(err => {
+      expect(err).toBe(null)
+      done()
+    })
+  }, 13)
+})
+
+test('teth middleware integration with multiple stores', done => {
+  const ctx = context()
+  const allItems = testData.slice(2500, 3000)
+  const withMultipleStores = env.with('first-mw-store', 'second-mw-store')
+  ctx.define('put-items: in-both-stores',
+    withMultipleStores,
+    (msg, firstStore, secondStore) => {
+      return pipe.all(allItems.map(item => {
+        return pipe.all([
+          firstStore.put(item.id, item),
+          secondStore.put(item.id, item)
+        ])
+      }))
+    })
+  ctx.define('get-items: from-both-stores',
+    withMultipleStores,
+    (msg, firstStore, secondStore) => {
+      return pipe.all(msg.allKeys.map(key => {
+        return pipe.all([
+          firstStore.get(key),
+          secondStore.get(key)
+        ])
+      }))
+    })
+  ctx.send('put-items: in-both-stores')
+    .then(allPutKeyPairs => {
+      expect(allPutKeyPairs.length).toBe(allItems.length)
+      const allKeys = allPutKeyPairs.map(keyPair => {
+        expect(keyPair.length).toBe(2)
+        expect(keyPair[0]).toEqual(keyPair[1])
+        return keyPair[0]
+      })
+      return ctx.send({'get-items': 'from-both-stores', allKeys})
+    })
+    .then(allGetItemPairs => {
+      expect(allGetItemPairs.length).toBe(allItems.length)
+      allGetItemPairs.forEach((itemPair, idx) => {
+        expect(itemPair.length).toBe(2)
+        expect(itemPair[0]).toEqual(itemPair[1])
+        expect(itemPair[0]).toEqual(allItems[idx])
       })
       done()
     })
     .catch(err => {
       console.error(err)
-      expect(err).toBe(null)
-      done()
-    })
-})
-
-test('filter values by prop', done => {
-  store
-    .filter(true, (k, v, ctx) => v.language === 'Spanish')
-    .then(keyValuePairs => {
-      const fromDb = keyValuePairs
-        .reduce((acc, kvp) => {
-          acc[kvp.key] = kvp.value
-          return acc
-        }, {})
-      const originals = testData
-        .filter(item => item.language === 'Spanish')
-        .reduce((acc, item) => {
-          acc[item.id] = item
-          return acc
-        }, {})
-      expect(fromDb).toEqual(originals)
-      done()
-    })
-    .catch(err => {
-      console.error(err)
-      expect(err).toBe(null)
       done()
     })
 })
 
 afterAll(done => {
-  store.close()
   env.close()
-  rimraf(envPath, done)
+  rimraf(envPath, (err) => {
+    if (err) console.error(err)
+    else done()
+  })
 })

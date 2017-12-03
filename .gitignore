@@ -58,6 +58,4 @@ typings/
 .env
 
 # Test FS-items
-fill-test.js
-fill-test-env/
 storage-test-environment/

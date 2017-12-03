@@ -6,7 +6,7 @@ const { Cursor } = require('node-lmdb')
 function InterfaceManager (config) {
   if (!config.env) throw new Error('config.env missing')
   if (!config.name) throw new Error('config.name missing')
-  const dbi = config.env.openDbi({ name, create: true })
+  const dbi = config.env.openDbi({ name: config.name, create: true })
   this.put = (writeTxn, key, data) => {
     writeTxn.putBinary(dbi, key, data)
     return key

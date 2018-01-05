@@ -2,7 +2,7 @@
 
 Teth key-value-store/-database. Based on [LMDB via node-lmdb](https://github.com/Venemo/node-lmdb), a full-ACID high performance key-value-store. Version 2 with T middleware integration.
 
-Teth-storage abstracts away the transaction-handling of the underlaying LMDB through usage of [teth-pipe.](https://github.com/jaqmol/teth-pipe) All operations performed within an `env.with(...)` - i.e. `store.put()`, `store.get()`, `store.remove()`, `store.filter()` - are automatically and efficiently wrapped in a transaction. Handling of parallel read and write transactions across multiple stores is covered as well.
+Teth-storage abstracts away the transaction-handling of the underlaying LMDB. All operations performed within an `env.with(...)` - i.e. `store.put()`, `store.get()`, `store.remove()`, `store.filter()` - are automatically and efficiently wrapped in a transaction. Handling of parallel read and write transactions across multiple stores is covered as well.
 
 Minimalistic API: `put()`, `get()`, `remove()`, `filter()`, `count()` and `drop()` are the only database operations that must be mastered to build high performance data services. Batch-operations are chained by `pipe.all([...])`.
 
@@ -27,29 +27,6 @@ env.close()
 
 The example above initialises a database environment and accesses the store 'my-store' within it. A put-operation is performed on the store.
 
-### T middleware usage example:
-
-``` javascript
-const { define } = require('teth/T')
-const pipe = require('teth-pipe')
-const { environment } = require('teth-storage')
-const env = environment({ maxDbs: 1, path: '~/path/to/data/dir' })
-
-define('save: all-data',
-  env.with('alpha-store', 'beta-store'),
-  ({alphaItem, betaItem}, alphaStore, betaStore) => pipe.all([
-    alphaStore.put(alphaItem.id, betaItem),
-    betaStore.put(betaItem.id, betaItem)
-  ]))
-
-// Environments can be closed
-env.close()
-```
-
-The example above initialises a database environment and defines a T-function with a store-mutation-middleware. On each invocation of the function, the stores 'alpha-store' and 'beta-store' are provided to the function handler. The data items 'alphaItem' and 'betaItem' are then put into their respective stores.
-
-[Please refer to teth,](https://github.com/jaqmol/teth) to know more.
-
 ## environment(<config>) -> <Environment>
 
 `<config>`: environment configuration object literal, with following properties:
@@ -61,12 +38,7 @@ The example above initialises a database environment and defines a T-function wi
 
 ## Environment API
 
-### direct
 - `.with(<name>, <callback>)`: retrieve a store by name. Run operations on it from inside `<callback>` (see example above and store API below), return a thenable to commit all transactions.
-
-### T middleware
-- `.with(<name-A>, <name-B>, <name-N>, ...)`: create T state mutation middleware that injects all provided stores into function handler. Run operations on each store from inside T function handler (see example above and store API below), return a thenable to commit all transactions.
-
 - `.close()`: close environment.
 
 ## Storage API
@@ -120,9 +92,13 @@ Keep in mind that most relational DBs are using key-value-stores like LMDB as th
 
 #### Optimisation
 
-For extremely fast filtering and value-access, the usual optimisations for key-value-stores can be applied: include identification-attributes into the key e.g. compose keys as follows:
+Key-value stores are the kind of database used underneath traditional SQL-DBs. Without the overhead of clumsy and hazardous (security-wise) SQL-interpreters, though. So if you design your application for a key-value-store (in contrast to designing it for an intermediate SQL representation or even worse, another abstraction layer on top: ORM), it is very unlikely you'll encounter bad performance. That said please keep in mind:
 
+- design your ERM for key-value-usage, not for an ORM
+- you can include identification-attributes into the key, e.g. compose keys like:
 `<primary-identification-attributes[:secondary-identification-attributes]>`
+- use an index per store, accessible with a fixed key
+- store your data column-based if everything needs to be searchable
 
 ### .drop(<confirm-callback>)
 

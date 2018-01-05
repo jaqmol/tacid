@@ -1,7 +1,6 @@
 /* Copyright 2017 Ronny Reichmann */
 /* Storage, interface available via environment.with(...) */
 
-const pipe = require('teth-pipe')
 const dataBuffer = require('./data-buffer')
 
 function Storage (config) {
@@ -12,37 +11,37 @@ function Storage (config) {
   const writeTxnMan = config.writeTxnMan
   const readTxnMan = config.readTxnMan
   this.put = (key, value, attachment) => {
-    if (!key) return pipe.reject(new Error('Argument <key> missing'))
-    if (!value) return pipe.reject(new Error('Argument <value> missing'))
-    return pipe(resolve => {
+    if (!key) return Promise.reject(new Error('Argument <key> missing'))
+    if (!value) return Promise.reject(new Error('Argument <value> missing'))
+    return new Promise(resolve => {
       const data = dataBuffer.fromValue(value, attachment)
       resolve(intMan.put(writeTxnMan.get(), key, data))
     })
   }
   this.get = (key) => {
-    if (!key) return pipe.reject(new Error('Argument <key> missing'))
-    return pipe(resolve => {
+    if (!key) return Promise.reject(new Error('Argument <key> missing'))
+    return new Promise(resolve => {
       const data = intMan.get(readTxnMan.get(), key)
       resolve(dataBuffer.toValue(data))
     })
   }
   this.remove = (key) => {
-    if (!key) return pipe.reject(new Error('Argument <key> missing'))
-    return pipe(resolve => {
+    if (!key) return Promise.reject(new Error('Argument <key> missing'))
+    return new Promise(resolve => {
       const data = intMan.remove(writeTxnMan.get(), key)
       resolve(dataBuffer.toValue(data))
     })
   }
   this.count = () => {
-    return pipe(resolve => {
+    return new Promise(resolve => {
       resolve(intMan.count(readTxnMan.get()))
     })
   }
   this.filter = (...args) => {
     const config = args.length === 2 ? args[0] : { values: false }
     const callback = args.length === 2 ? args[1] : args[0]
-    if (!callback) return pipe.reject(new Error('Argument <callback> missing'))
-    return pipe(resolve => {
+    if (!callback) return Promise.reject(new Error('Argument <callback> missing'))
+    return new Promise(resolve => {
       const count = intMan.count(readTxnMan.get())
       const cursor = intMan.cursor(readTxnMan.get())
       const acc = []
@@ -68,8 +67,8 @@ function Storage (config) {
     })
   }
   this.drop = (confirmCallback) => {
-    if (!confirmCallback) return pipe.reject(new Error('Argument <confirmCallback> missing'))
-    return pipe(resolve => {
+    if (!confirmCallback) return Promise.reject(new Error('Argument <confirmCallback> missing'))
+    return new Promise(resolve => {
       const performDrop = confirmCallback()
       if (performDrop) {
         intMan.drop()

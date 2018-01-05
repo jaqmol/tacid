@@ -1,8 +1,7 @@
 /* Copyright 2017 Ronny Reichmann */
 /* globals test expect beforeAll afterAll */
 
-const pipe = require('teth-pipe')
-const { context } = require('teth/T')
+// const { context } = require('teth/T')
 const rimraf = require('rimraf')
 const environment = require('./environment')
 const dataBuffer = require('./data-buffer')
@@ -59,11 +58,11 @@ test('put one in store and get', done => {
 test('put many in store and get', done => {
   const allItems = testData.slice(1, 500)
   env.with('test-store', str => {
-      return pipe.all(allItems.map(i => str.put(i.id, i)))
+      return Promise.all(allItems.map(i => str.put(i.id, i)))
     })
     .then(allKeys => {
       return env.with('test-store', str => {
-        return pipe.all(allKeys.map(k => str.get(k)))
+        return Promise.all(allKeys.map(k => str.get(k)))
       })
     })
     .then(resultItems => {
@@ -79,7 +78,7 @@ test('put many in store and remove', done => {
   const allItems = testData.slice(500, 1000)
   env.with('test-store', str => {
       return str.count().then(countBefore => {
-        return pipe.all(allItems.map(i => str.put(i.id, i)))
+        return Promise.all(allItems.map(i => str.put(i.id, i)))
           .then(allResultKeys => ({countBefore, allResultKeys}))
       })
     })
@@ -92,7 +91,7 @@ test('put many in store and remove', done => {
     .then(result => {
       expect(result.countBefore).toBe(result.countAfterPut - 500)
       return env.with('test-store', str => {
-        return pipe.all(result.allResultKeys.map(k => str.remove(k)))
+        return Promise.all(result.allResultKeys.map(k => str.remove(k)))
       })
     })
     .then(allRemovedItems => {
@@ -113,10 +112,10 @@ test('put and get in parallel', done => {
   let count = 0
   const operate = (name, from, to) => {
     const allItems = testData.slice(from, to)
-    env.with(name, str => pipe.all(allItems.map(i => str.put(i.id, i))))
+    env.with(name, str => Promise.all(allItems.map(i => str.put(i.id, i))))
       .then(allPutKeys => {
         expect(allPutKeys).toEqual(allItems.map(i => i.id))
-        return env.with(name, str => pipe.all(allPutKeys.map(k => str.get(k))))
+        return env.with(name, str => Promise.all(allPutKeys.map(k => str.get(k))))
       })
       .then(allGetItems => {
         expect(allGetItems).toEqual(allItems)
@@ -200,54 +199,54 @@ test('filter values by prop', done => {
   }, 13)
 })
 
-test('teth middleware integration with multiple stores', done => {
-  const ctx = context()
-  const allItems = testData.slice(2500, 3000)
-  const withMultipleStores = env.with('first-mw-store', 'second-mw-store')
-  ctx.define('put-items: in-both-stores',
-    withMultipleStores,
-    (msg, firstStore, secondStore) => {
-      return pipe.all(allItems.map(item => {
-        return pipe.all([
-          firstStore.put(item.id, item),
-          secondStore.put(item.id, item)
-        ])
-      }))
-    })
-  ctx.define('get-items: from-both-stores',
-    withMultipleStores,
-    (msg, firstStore, secondStore) => {
-      return pipe.all(msg.allKeys.map(key => {
-        return pipe.all([
-          firstStore.get(key),
-          secondStore.get(key)
-        ])
-      }))
-    })
-  ctx.send('put-items: in-both-stores')
-    .then(allPutKeyPairs => {
-      expect(allPutKeyPairs.length).toBe(allItems.length)
-      const allKeys = allPutKeyPairs.map(keyPair => {
-        expect(keyPair.length).toBe(2)
-        expect(keyPair[0]).toEqual(keyPair[1])
-        return keyPair[0]
-      })
-      return ctx.send({'get-items': 'from-both-stores', allKeys})
-    })
-    .then(allGetItemPairs => {
-      expect(allGetItemPairs.length).toBe(allItems.length)
-      allGetItemPairs.forEach((itemPair, idx) => {
-        expect(itemPair.length).toBe(2)
-        expect(itemPair[0]).toEqual(itemPair[1])
-        expect(itemPair[0]).toEqual(allItems[idx])
-      })
-      done()
-    })
-    .catch(err => {
-      console.error(err)
-      done()
-    })
-})
+// test('teth middleware integration with multiple stores', done => {
+//   const ctx = context()
+//   const allItems = testData.slice(2500, 3000)
+//   const withMultipleStores = env.with('first-mw-store', 'second-mw-store')
+//   ctx.define('put-items: in-both-stores',
+//     withMultipleStores,
+//     (msg, firstStore, secondStore) => {
+//       return Promise.all(allItems.map(item => {
+//         return Promise.all([
+//           firstStore.put(item.id, item),
+//           secondStore.put(item.id, item)
+//         ])
+//       }))
+//     })
+//   ctx.define('get-items: from-both-stores',
+//     withMultipleStores,
+//     (msg, firstStore, secondStore) => {
+//       return Promise.all(msg.allKeys.map(key => {
+//         return Promise.all([
+//           firstStore.get(key),
+//           secondStore.get(key)
+//         ])
+//       }))
+//     })
+//   ctx.send('put-items: in-both-stores')
+//     .then(allPutKeyPairs => {
+//       expect(allPutKeyPairs.length).toBe(allItems.length)
+//       const allKeys = allPutKeyPairs.map(keyPair => {
+//         expect(keyPair.length).toBe(2)
+//         expect(keyPair[0]).toEqual(keyPair[1])
+//         return keyPair[0]
+//       })
+//       return ctx.send({'get-items': 'from-both-stores', allKeys})
+//     })
+//     .then(allGetItemPairs => {
+//       expect(allGetItemPairs.length).toBe(allItems.length)
+//       allGetItemPairs.forEach((itemPair, idx) => {
+//         expect(itemPair.length).toBe(2)
+//         expect(itemPair[0]).toEqual(itemPair[1])
+//         expect(itemPair[0]).toEqual(allItems[idx])
+//       })
+//       done()
+//     })
+//     .catch(err => {
+//       console.error(err)
+//       done()
+//     })
+// })
 
 afterAll(done => {
   env.close()

@@ -11,7 +11,7 @@ function Environment (config) {
     if ((args.length === 2) && (typeof lastArg === 'function')) {
       return envMan.withStore(args[0], lastArg)
     } else {
-      return envMan.withMiddleware(args)
+      throw new Error('Must be called with a store name and a callback function.')
     }
   }
   this.close = () => envMan.close()

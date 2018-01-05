@@ -4,7 +4,6 @@
 const { Env } = require('node-lmdb')
 const path = require('path')
 const mkdirp = require('mkdirp').sync
-const pipe = require('teth-pipe')
 const TransactionManager = require('./transaction-manager')
 const InterfaceManager = require('./interface-manager')
 const Storage = require('./storage')
@@ -30,7 +29,7 @@ function EnvironmentManager (config) {
     try {
       thenable = callback(store)
     } catch (err) {
-      return pipe.reject(err)
+      return Promise.reject(err)
     }
     if (thenable.then && thenable.catch) {
       return thenable.then(result => {
@@ -39,28 +38,7 @@ function EnvironmentManager (config) {
         intMan.close()
         return result
       })
-    } else return pipe.reject(new Error('Callback return value must be thenable'))
-  }
-  this.withMiddleware = manyStoreNames => {
-    return (msg, next) => {
-      const manyIntMans = manyStoreNames.map(name => new InterfaceManager({ name, env }))
-      const readTxnMan = new TransactionManager({ env, readOnly: true })
-      const manyStores = manyIntMans.map(intMan => new Storage({ intMan, writeTxnMan, readTxnMan }))
-      let thenable = null
-      try {
-        thenable = next(msg, ...manyStores)
-      } catch (err) {
-        return pipe.reject(err)
-      }
-      if (thenable.then && thenable.catch) {
-        return thenable.then(result => {
-          writeTxnMan.commit()
-          readTxnMan.commit()
-          manyIntMans.forEach(intMan => { intMan.close() })
-          return result
-        })
-      } else return pipe.reject(new Error('Callback return value must be thenable'))
-    }
+    } else return Promise.reject(new Error('Callback return value must be thenable'))
   }
   this.close = () => {
     env.close()

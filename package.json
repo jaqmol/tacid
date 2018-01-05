@@ -28,11 +28,9 @@
   "dependencies": {
     "mkdirp": "^0.5.1",
     "node-lmdb": "^0.4.13",
-    "rimraf": "^2.6.2",
-    "teth-pipe": "^1.0.9"
+    "rimraf": "^2.6.2"
   },
   "devDependencies": {
-    "jest": "^21.2.1",
-    "teth": "^1.0.39"
+    "jest": "^21.2.1"
   }
 }

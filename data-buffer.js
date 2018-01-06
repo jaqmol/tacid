@@ -7,19 +7,20 @@ const dataBuffer = {
     const valueJsonLen = Buffer.byteLength(valueJson)
     const attachmentLen = attachment ? attachment.length : 0
     const attachmentStartIdx = 8 + valueJsonLen
-    const db = Buffer.alloc(attachmentStartIdx + attachmentLen)
-    db.writeDoubleBE(valueJsonLen, 0)
-    db.write(valueJson, 8)
-    if (attachmentLen) db.fill(attachment, attachmentStartIdx)
-    return db
+    const buf = Buffer.alloc(attachmentStartIdx + attachmentLen)
+    buf.writeDoubleBE(valueJsonLen, 0)
+    buf.write(valueJson, 8)
+    if (attachmentLen) buf.fill(attachment, attachmentStartIdx)
+    return buf
   },
-  toValue: db => {
-    const valueJsonLen = db.readDoubleBE(0)
+  toValue: buf => {
+    if (!buf) return null;
+    const valueJsonLen = buf.readDoubleBE(0)
     const attachmentStartIdx = 8 + valueJsonLen
-    const valueJson = db.toString('utf8', 8, attachmentStartIdx)
+    const valueJson = buf.toString('utf8', 8, attachmentStartIdx)
     const value = JSON.parse(valueJson)
-    if (db.length > attachmentStartIdx) {
-      const attachment = db.slice(attachmentStartIdx)
+    if (buf.length > attachmentStartIdx) {
+      const attachment = buf.slice(attachmentStartIdx)
       return { value, attachment }
     } else return value
   }

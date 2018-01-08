@@ -16,7 +16,7 @@ function InterfaceManager (config) {
   }
   this.remove = (writeTxn, key) => {
     const data = this.get(writeTxn, key)
-    writeTxn.del(dbi, key)
+    if (data) writeTxn.del(dbi, key)
     return data
   }
   this.count = (readTxn) => {

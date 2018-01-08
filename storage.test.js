@@ -100,6 +100,11 @@ test('put many in store and remove', done => {
     })
     .then(countAfter => {
       expect(countAfter).toBe(500)
+      const first = allItems[0];
+      return env.with('test-store', str => str.remove(first.id))
+    })
+    .then(removedFirst => {
+      expect(removedFirst).toEqual(null)
       done()
     })
     .catch(err => {

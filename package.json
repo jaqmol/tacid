@@ -1,6 +1,6 @@
 {
   "name": "tacid",
-  "version": "2.0.8",
+  "version": "2.1.0",
   "description": "Transactional ACID key value store based on Promises (async/await compatible) and LMDB.",
   "main": "environment.js",
   "scripts": {

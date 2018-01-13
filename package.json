@@ -1,17 +1,18 @@
 {
-  "name": "teth-storage",
-  "version": "2.0.7",
-  "description": "Teth key-value-store based on LMDB.",
+  "name": "tacid",
+  "version": "2.0.8",
+  "description": "Transactional ACID key value store based on Promises (async/await compatible) and LMDB.",
   "main": "environment.js",
   "scripts": {
     "test": "jest"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaqmol/teth-storage.git"
+    "url": "git+https://github.com/jaqmol/tacid.git"
   },
   "keywords": [
-    "teth",
+    "transactional",
+    "ACID",
     "javascript",
     "functional",
     "reactive",
@@ -22,9 +23,9 @@
   "author": "Ronny Reichmann",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/jaqmol/teth-storage/issues"
+    "url": "https://github.com/jaqmol/tacid/issues"
   },
-  "homepage": "https://github.com/jaqmol/teth-storage#readme",
+  "homepage": "https://github.com/jaqmol/tacid#readme",
   "dependencies": {
     "mkdirp": "^0.5.1",
     "node-lmdb": "^0.4.13",

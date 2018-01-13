@@ -1,21 +1,21 @@
-# teth-storage
+# Tacid
 
-Teth key-value-store/-database. Based on [LMDB via node-lmdb](https://github.com/Venemo/node-lmdb), a full-ACID high performance key-value-store. Version 2 with T middleware integration.
+Transactional ACID key value store based on Promises (async/await compatible) and LMDB. Based on [LMDB via node-lmdb](https://github.com/Venemo/node-lmdb).
 
-Teth-storage abstracts away the transaction-handling of the underlaying LMDB. All operations performed within an `env.with(...)` - i.e. `store.put()`, `store.get()`, `store.remove()`, `store.filter()` - are automatically and efficiently wrapped in a transaction. Handling of parallel read and write transactions across multiple stores is covered as well.
+Tacid abstracts away the transaction-handling of the underlaying LMDB. All operations performed within an `env.with(...)` - i.e. `store.put()`, `store.get()`, `store.remove()`, `store.filter()` - are automatically and efficiently wrapped in a transaction. Handling of parallel read and write transactions across multiple stores is covered as well.
 
-Minimalistic API: `put()`, `get()`, `remove()`, `filter()`, `count()` and `drop()` are the only database operations that must be mastered to build high performance data services. Batch-operations are chained by `pipe.all([...])`.
+Minimalistic API: `put()`, `get()`, `remove()`, `filter()`, `count()` and `drop()` are the only database operations that must be mastered to build high performance data services. Batch-operations are chained by `Promise.all([...])`.
 
 ## usage
 
 ### direct usage example:
 
 ``` javascript
-const { environment } = require('teth-storage')
+const { environment } = require('tacid')
 const env = environment({ maxDbs: 1, path: '~/path/to/data/dir' })
 
 env.with('my-store', myStore => {
-    // Return a thenable (all store.ops return thenables)
+    // Return a promise (all store.ops return promises)
     return myStore.put(key, value, /* optional attachment */)
   })
   .then(/* handle results */)
@@ -43,32 +43,32 @@ The example above initialises a database environment and accesses the store 'my-
 
 ## Storage API
 
-### .put(key, value, attachment) -> pipe.resolve(key)
+### .put(key, value, attachment) -> Promise.resolve(key)
 
 Write data to the store:
-- `<key>`: string key under which value is stored. Best used with `teth/auid`.
+- `<key>`: string key under which value is stored. Best used with ID generators like `auid`.
 - `<value>`: object literal representing the data to be stored. Must be serializable via JSON.stringify(...).
 - `<attachment>`: an optional NodeJS buffer instance, additional binary data to be stored (e.g. a media file).
-- Returns a pipe that resolves with the key.
+- Returns a Promise that resolves with the key.
 
-### .get(key) -> pipe.resolve(value|{ value, attachment })
+### .get(key) -> Promise.resolve(value|{ value, attachment })
 
 Get data from the store:
 - `<key>`: string key under which value is stored.
-- Returns a pipe that resolves with the value or an object literal containing 2 props value and attachment.
+- Returns a Promise that resolves with the value or an object literal containing 2 props value and attachment.
 
-### .remove(key) -> pipe.resolve(value|{value, attachment})
+### .remove(key) -> Promise.resolve(value|{value, attachment})
 
 Delete data from the store.
 - `<key>`: string key under which value is stored.
-- Returns a pipe that resolves with the value or an object literal containing 2 props value and attachment.
+- Returns a Promise that resolves with the value or an object literal containing 2 props value and attachment.
 
-### .count() -> pipe.resolve(number)
+### .count() -> Promise.resolve(number)
 
 Get the number of key-value-pairs in the store.
-- Returns a pipe that resolves with the number.
+- Returns a Promise that resolves with the number.
 
-### .filter([config,] callback) -> pipe.resolve(results[])
+### .filter([config,] callback) -> Promise.resolve(results[])
 
 Filter contents of the store.
 

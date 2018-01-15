@@ -1,14 +1,12 @@
 # Tacid
 
-Transactional ACID key value store based on Promises (async/await compatible) and LMDB. Based on [LMDB via node-lmdb](https://github.com/Venemo/node-lmdb).
+Transactional ACID key-value store with optional binary attachments, based on promises (async/await compatible) and [LMDB (via node-lmdb).](https://github.com/Venemo/node-lmdb)
 
 Tacid abstracts away the transaction-handling of the underlaying LMDB. All operations performed within an `env.with(...)` - i.e. `store.put()`, `store.get()`, `store.remove()`, `store.filter()` - are automatically and efficiently wrapped in a transaction. Handling of parallel read and write transactions across multiple stores is covered as well.
 
 Minimalistic API: `put()`, `get()`, `remove()`, `filter()`, `count()` and `drop()` are the only database operations that must be mastered to build high performance data services. Batch-operations are chained by `Promise.all([...])`.
 
 ## usage
-
-### direct usage example:
 
 ``` javascript
 const { environment } = require('tacid')
@@ -25,13 +23,13 @@ env.with('my-store', myStore => {
 env.close()
 ```
 
-The example above initialises a database environment and accesses the store 'my-store' within it. A put-operation is performed on the store.
+The example above initialises a database environment and accesses the store 'my-store' within it. A put-operation is performed on the store. Next to keys with associated values, binary attachments (NodeJS Buffers) can be stored.
 
 ## environment(<config>) -> <Environment>
 
 `<config>`: environment configuration object literal, with following properties:
 - `path`: mandatory string representing the directory path.
-- `maxDbs`: mandatory number representing the max count of databases/stores inside this environment.
+- `maxDbs`: mandatory number representing the max count of stores inside this environment.
 - `maxSize`: optional max size of the environment.
 
 `<Environment>`: instance representing a configured environment:
